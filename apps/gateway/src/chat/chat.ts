@@ -128,7 +128,10 @@ import { extractReasoning } from "./tools/extract-reasoning.js";
 import { extractTokenUsage } from "./tools/extract-token-usage.js";
 import { extractToolCalls } from "./tools/extract-tool-calls.js";
 import { getFinishReasonFromError } from "./tools/get-finish-reason-from-error.js";
-import { getProviderEnv } from "./tools/get-provider-env.js";
+import {
+	getProviderEnv,
+	getProviderEnvKeyCount,
+} from "./tools/get-provider-env.js";
 import { hasMeaningfulAssistantOutput } from "./tools/has-meaningful-assistant-output.js";
 import { healJsonResponse } from "./tools/heal-json-response.js";
 import { isModelTrulyFree } from "./tools/is-model-truly-free.js";
@@ -162,6 +165,7 @@ import {
 	providerRetryKey,
 	selectNextProvider,
 	shouldRetryAlternateKey,
+	shouldRetryDirectProviderSameKey,
 	shouldRetryRequest,
 } from "./tools/retry-with-fallback.js";
 import {
@@ -4639,6 +4643,7 @@ chat.openapi(completions, async (c) => {
 				// --- Retry loop for provider fallback ---
 				const routingAttempts: RoutingAttempt[] = [];
 				const failedProviderIds = new Set<string>();
+				let sameKeyRetryUsed = false;
 				let res: Response | undefined;
 				const finalLogId = logIdOverride ?? shortid();
 				for (
@@ -4800,8 +4805,20 @@ chat.openapi(completions, async (c) => {
 								usedProvider,
 							});
 							const willRetrySameProvider = sameProviderRetryContext !== null;
+							const willRetrySameKey =
+								!willRetrySameProvider &&
+								!willRetryTimeout &&
+								shouldRetryDirectProviderSameKey({
+									requestedProvider,
+									usedProvider,
+									errorType: "upstream_timeout",
+									statusCode: 0,
+									envVarName,
+									envKeyCount: getProviderEnvKeyCount(usedProvider as Provider),
+									alreadyRetried: sameKeyRetryUsed,
+								});
 							const willRetryRequest =
-								willRetrySameProvider || willRetryTimeout;
+								willRetrySameProvider || willRetryTimeout || willRetrySameKey;
 
 							const baseLogEntry = createLogEntry(
 								requestId,
@@ -4895,6 +4912,26 @@ chat.openapi(completions, async (c) => {
 									),
 								);
 								applyResolvedProviderContext(sameProviderRetryContext);
+								retryAttempt--;
+								continue;
+							}
+
+							if (willRetrySameKey) {
+								sameKeyRetryUsed = true;
+								routingAttempts.push(
+									buildRoutingAttempt(
+										usedProvider,
+										baseModelName,
+										0,
+										getErrorType(0),
+										false,
+										{
+											region: usedRegion,
+											apiKeyHash: usedApiKeyHash,
+											logId: attemptLogId,
+										},
+									),
+								);
 								retryAttempt--;
 								continue;
 							}
@@ -5132,7 +5169,20 @@ chat.openapi(completions, async (c) => {
 								usedProvider,
 							});
 							const willRetrySameProvider = sameProviderRetryContext !== null;
-							const willRetryRequest = willRetrySameProvider || willRetryFetch;
+							const willRetrySameKey =
+								!willRetrySameProvider &&
+								!willRetryFetch &&
+								shouldRetryDirectProviderSameKey({
+									requestedProvider,
+									usedProvider,
+									errorType: "network_error",
+									statusCode: 0,
+									envVarName,
+									envKeyCount: getProviderEnvKeyCount(usedProvider as Provider),
+									alreadyRetried: sameKeyRetryUsed,
+								});
+							const willRetryRequest =
+								willRetrySameProvider || willRetryFetch || willRetrySameKey;
 
 							const baseLogEntry = createLogEntry(
 								requestId,
@@ -5245,6 +5295,26 @@ chat.openapi(completions, async (c) => {
 									),
 								);
 								applyResolvedProviderContext(sameProviderRetryContext);
+								retryAttempt--;
+								continue;
+							}
+
+							if (willRetrySameKey) {
+								sameKeyRetryUsed = true;
+								routingAttempts.push(
+									buildRoutingAttempt(
+										usedProvider,
+										baseModelName,
+										0,
+										getErrorType(0),
+										false,
+										{
+											region: usedRegion,
+											apiKeyHash: usedApiKeyHash,
+											logId: attemptLogId,
+										},
+									),
+								);
 								retryAttempt--;
 								continue;
 							}
@@ -5364,8 +5434,20 @@ chat.openapi(completions, async (c) => {
 							usedProvider,
 						});
 						const willRetrySameProvider = sameProviderRetryContext !== null;
+						const willRetrySameKey =
+							!willRetrySameProvider &&
+							!willRetryHttpError &&
+							shouldRetryDirectProviderSameKey({
+								requestedProvider,
+								usedProvider,
+								errorType: finishReason,
+								statusCode: res.status,
+								envVarName,
+								envKeyCount: getProviderEnvKeyCount(usedProvider as Provider),
+								alreadyRetried: sameKeyRetryUsed,
+							});
 						const willRetryRequest =
-							willRetrySameProvider || willRetryHttpError;
+							willRetrySameProvider || willRetryHttpError || willRetrySameKey;
 
 						const baseLogEntry = createLogEntry(
 							requestId,
@@ -5493,6 +5575,26 @@ chat.openapi(completions, async (c) => {
 								),
 							);
 							applyResolvedProviderContext(sameProviderRetryContext);
+							retryAttempt--;
+							continue;
+						}
+
+						if (willRetrySameKey) {
+							sameKeyRetryUsed = true;
+							routingAttempts.push(
+								buildRoutingAttempt(
+									usedProvider,
+									baseModelName,
+									res.status,
+									getErrorType(res.status),
+									false,
+									{
+										region: usedRegion,
+										apiKeyHash: usedApiKeyHash,
+										logId: attemptLogId,
+									},
+								),
+							);
 							retryAttempt--;
 							continue;
 						}
@@ -5640,8 +5742,22 @@ chat.openapi(completions, async (c) => {
 							usedProvider,
 						});
 						const willRetrySameProvider = sameProviderRetryContext !== null;
+						const willRetrySameKey =
+							!willRetrySameProvider &&
+							!willRetryStreamingError &&
+							shouldRetryDirectProviderSameKey({
+								requestedProvider,
+								usedProvider,
+								errorType,
+								statusCode: inferredStatusCode,
+								envVarName,
+								envKeyCount: getProviderEnvKeyCount(usedProvider as Provider),
+								alreadyRetried: sameKeyRetryUsed,
+							});
 						const willRetryRequest =
-							willRetrySameProvider || willRetryStreamingError;
+							willRetrySameProvider ||
+							willRetryStreamingError ||
+							willRetrySameKey;
 
 						const baseLogEntry = createLogEntry(
 							requestId,
@@ -5755,6 +5871,26 @@ chat.openapi(completions, async (c) => {
 								),
 							);
 							applyResolvedProviderContext(sameProviderRetryContext);
+							retryAttempt--;
+							continue;
+						}
+
+						if (willRetrySameKey) {
+							sameKeyRetryUsed = true;
+							routingAttempts.push(
+								buildRoutingAttempt(
+									usedProvider,
+									baseModelName,
+									inferredStatusCode,
+									getErrorType(inferredStatusCode),
+									false,
+									{
+										region: usedRegion,
+										apiKeyHash: usedApiKeyHash,
+										logId: attemptLogId,
+									},
+								),
+							);
 							retryAttempt--;
 							continue;
 						}
@@ -8238,6 +8374,7 @@ chat.openapi(completions, async (c) => {
 	// --- Retry loop for provider fallback ---
 	const routingAttempts: RoutingAttempt[] = [];
 	const failedProviderIds = new Set<string>();
+	let sameKeyRetryUsed = false;
 	let canceled = false;
 	let fetchError: Error | null = null;
 	let isTimeoutFetchError = false;
@@ -8430,8 +8567,20 @@ chat.openapi(completions, async (c) => {
 				usedProvider,
 			});
 			const willRetrySameProvider = sameProviderRetryContext !== null;
+			const willRetrySameKey =
+				!willRetrySameProvider &&
+				!willRetryFetchNonStreaming &&
+				shouldRetryDirectProviderSameKey({
+					requestedProvider,
+					usedProvider,
+					errorType: "network_error",
+					statusCode: 0,
+					envVarName,
+					envKeyCount: getProviderEnvKeyCount(usedProvider as Provider),
+					alreadyRetried: sameKeyRetryUsed,
+				});
 			const willRetryRequest =
-				willRetrySameProvider || willRetryFetchNonStreaming;
+				willRetrySameProvider || willRetryFetchNonStreaming || willRetrySameKey;
 
 			const baseLogEntry = createLogEntry(
 				requestId,
@@ -8534,6 +8683,26 @@ chat.openapi(completions, async (c) => {
 					),
 				);
 				applyResolvedProviderContext(sameProviderRetryContext);
+				retryAttempt--;
+				continue;
+			}
+
+			if (willRetrySameKey) {
+				sameKeyRetryUsed = true;
+				routingAttempts.push(
+					buildRoutingAttempt(
+						usedProvider,
+						baseModelName,
+						0,
+						getErrorType(0),
+						false,
+						{
+							region: usedRegion,
+							apiKeyHash: usedApiKeyHash,
+							logId: attemptLogId,
+						},
+					),
+				);
 				retryAttempt--;
 				continue;
 			}
@@ -8898,8 +9067,20 @@ chat.openapi(completions, async (c) => {
 				usedProvider,
 			});
 			const willRetrySameProvider = sameProviderRetryContext !== null;
+			const willRetrySameKey =
+				!willRetrySameProvider &&
+				!willRetryHttpNonStreaming &&
+				shouldRetryDirectProviderSameKey({
+					requestedProvider,
+					usedProvider,
+					errorType: finishReason,
+					statusCode: res.status,
+					envVarName,
+					envKeyCount: getProviderEnvKeyCount(usedProvider as Provider),
+					alreadyRetried: sameKeyRetryUsed,
+				});
 			const willRetryRequest =
-				willRetrySameProvider || willRetryHttpNonStreaming;
+				willRetrySameProvider || willRetryHttpNonStreaming || willRetrySameKey;
 
 			const baseLogEntry = createLogEntry(
 				requestId,
@@ -9033,6 +9214,26 @@ chat.openapi(completions, async (c) => {
 					),
 				);
 				applyResolvedProviderContext(sameProviderRetryContext);
+				retryAttempt--;
+				continue;
+			}
+
+			if (willRetrySameKey) {
+				sameKeyRetryUsed = true;
+				routingAttempts.push(
+					buildRoutingAttempt(
+						usedProvider,
+						baseModelName,
+						res.status,
+						getErrorType(res.status),
+						false,
+						{
+							region: usedRegion,
+							apiKeyHash: usedApiKeyHash,
+							logId: attemptLogId,
+						},
+					),
+				);
 				retryAttempt--;
 				continue;
 			}
