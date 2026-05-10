@@ -128,10 +128,7 @@ import { extractReasoning } from "./tools/extract-reasoning.js";
 import { extractTokenUsage } from "./tools/extract-token-usage.js";
 import { extractToolCalls } from "./tools/extract-tool-calls.js";
 import { getFinishReasonFromError } from "./tools/get-finish-reason-from-error.js";
-import {
-	getProviderEnv,
-	getProviderEnvKeyCount,
-} from "./tools/get-provider-env.js";
+import { getEnvKeyCount, getProviderEnv } from "./tools/get-provider-env.js";
 import { hasMeaningfulAssistantOutput } from "./tools/has-meaningful-assistant-output.js";
 import { healJsonResponse } from "./tools/heal-json-response.js";
 import { isModelTrulyFree } from "./tools/is-model-truly-free.js";
@@ -4814,7 +4811,7 @@ chat.openapi(completions, async (c) => {
 									errorType: "upstream_timeout",
 									statusCode: 0,
 									envVarName,
-									envKeyCount: getProviderEnvKeyCount(usedProvider as Provider),
+									envKeyCount: getEnvKeyCount(envVarName),
 									alreadyRetried: sameKeyRetryUsed,
 								});
 							const willRetryRequest =
@@ -5182,7 +5179,7 @@ chat.openapi(completions, async (c) => {
 									errorType: "network_error",
 									statusCode: 0,
 									envVarName,
-									envKeyCount: getProviderEnvKeyCount(usedProvider as Provider),
+									envKeyCount: getEnvKeyCount(envVarName),
 									alreadyRetried: sameKeyRetryUsed,
 								});
 							const willRetryRequest =
@@ -5451,7 +5448,7 @@ chat.openapi(completions, async (c) => {
 								errorType: finishReason,
 								statusCode: res.status,
 								envVarName,
-								envKeyCount: getProviderEnvKeyCount(usedProvider as Provider),
+								envKeyCount: getEnvKeyCount(envVarName),
 								alreadyRetried: sameKeyRetryUsed,
 							});
 						const willRetryRequest =
@@ -5763,7 +5760,7 @@ chat.openapi(completions, async (c) => {
 								errorType,
 								statusCode: inferredStatusCode,
 								envVarName,
-								envKeyCount: getProviderEnvKeyCount(usedProvider as Provider),
+								envKeyCount: getEnvKeyCount(envVarName),
 								alreadyRetried: sameKeyRetryUsed,
 							});
 						const willRetryRequest =
@@ -8592,7 +8589,7 @@ chat.openapi(completions, async (c) => {
 					errorType: "network_error",
 					statusCode: 0,
 					envVarName,
-					envKeyCount: getProviderEnvKeyCount(usedProvider as Provider),
+					envKeyCount: getEnvKeyCount(envVarName),
 					alreadyRetried: sameKeyRetryUsed,
 				});
 			const willRetryRequest =
@@ -9096,7 +9093,7 @@ chat.openapi(completions, async (c) => {
 					errorType: finishReason,
 					statusCode: res.status,
 					envVarName,
-					envKeyCount: getProviderEnvKeyCount(usedProvider as Provider),
+					envKeyCount: getEnvKeyCount(envVarName),
 					alreadyRetried: sameKeyRetryUsed,
 				});
 			const willRetryRequest =
